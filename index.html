@@ -11,14 +11,73 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
+    <script>
+      (function () {
+        function ensureDebugBox() {
+          let box = document.getElementById("debug-box");
+          if (!box) {
+            box = document.createElement("pre");
+            box.id = "debug-box";
+            box.style.position = "fixed";
+            box.style.right = "12px";
+            box.style.bottom = "12px";
+            box.style.maxWidth = "42vw";
+            box.style.maxHeight = "38vh";
+            box.style.overflow = "auto";
+            box.style.margin = "0";
+            box.style.padding = "12px 14px";
+            box.style.borderRadius = "12px";
+            box.style.background = "rgba(122, 28, 28, 0.92)";
+            box.style.color = "#fff";
+            box.style.font = "12px/1.5 Consolas, monospace";
+            box.style.whiteSpace = "pre-wrap";
+            box.style.zIndex = "99999";
+            document.addEventListener("DOMContentLoaded", function () {
+              document.body.appendChild(box);
+            });
+          }
+          return box;
+        }
+        window.__showDebug = function (message) {
+          const box = ensureDebugBox();
+          box.textContent = String(message);
+        };
+        window.addEventListener("error", function (event) {
+          window.__showDebug("JS Error: " + event.message + (event.filename ? "\n" + event.filename + ":" + event.lineno : ""));
+        });
+        window.addEventListener("unhandledrejection", function (event) {
+          const reason = event.reason && event.reason.stack ? event.reason.stack : String(event.reason);
+          window.__showDebug("Promise Error:\n" + reason);
+        });
+      })();
+    </script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <script>
+      window.addEventListener("load", function () {
+        setTimeout(function () {
+          const missing = [];
+          if (!window.React) missing.push("React");
+          if (!window.ReactDOM) missing.push("ReactDOM");
+          if (!window.Babel) missing.push("Babel");
+          if (!window.Plotly) missing.push("Plotly");
+          if (missing.length) {
+            window.__showDebug("외부 스크립트를 불러오지 못했습니다:\n" + missing.join(", "));
+          }
+        }, 1200);
+      });
+    </script>
   </head>
   <body>
-    <div id="root"></div>
-    <script src="./utils.js"></script>
-    <script type="text/babel" src="./app.js"></script>
+    <div id="root">
+      <div style="padding:24px; color:#e8eefc; font-family:'Noto Sans KR', sans-serif; background:#09111f; min-height:100vh;">
+        시뮬레이터를 불러오는 중입니다. 화면이 계속 비어 있으면 인터넷 연결 또는 CDN 로딩 상태를 확인해 주세요.
+      </div>
+    </div>
+    <script charset="UTF-8" src="./utils.js"></script>
+    <script type="text/babel" charset="UTF-8" src="./app.js"></script>
   </body>
 </html>
+

@@ -442,6 +442,80 @@ p {
   margin-right: 8px;
 }
 
+.edu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.edu-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.edu-card strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.edu-card p {
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.click-target {
+  position: relative;
+}
+
+.click-target img {
+  cursor: crosshair;
+}
+
+.inspector-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 14px;
+}
+
+.patch-box {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.emphasis-box {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(102, 217, 195, 0.08);
+  border: 1px solid rgba(102, 217, 195, 0.2);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.compare-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.compare-item {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.compare-item canvas {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 10px;
+}
+
 @media (max-width: 1180px) {
   .hero,
   .workspace {
@@ -468,7 +542,9 @@ p {
 @media (max-width: 760px) {
   .hero-grid,
   .pill-row,
-  .control-grid {
+  .control-grid,
+  .compare-row,
+  .inspector-grid {
     grid-template-columns: 1fr;
   }
 
