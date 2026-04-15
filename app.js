@@ -262,7 +262,7 @@ function drawPts(imageData, points, color, withAngle = false) {
   return canvas.toDataURL();
 }
 
-function patchZoom(imageData, x, y, radius = 7, scale = 10) {
+function patchZoom(imageData, x, y, radius = 10, scale = 8) {
   const size = radius * 2 + 1;
   const patch = new ImageData(size, size);
 
@@ -323,8 +323,8 @@ function harrisAt(imageData, x, y) {
   let syy = 0;
   let sxy = 0;
 
-  for (let yy = Math.max(1, y - 5); yy <= Math.min(imageData.height - 2, y + 5); yy += 1) {
-    for (let xx = Math.max(1, x - 5); xx <= Math.min(imageData.width - 2, x + 5); xx += 1) {
+  for (let yy = Math.max(1, y - 7); yy <= Math.min(imageData.height - 2, y + 7); yy += 1) {
+    for (let xx = Math.max(1, x - 7); xx <= Math.min(imageData.width - 2, x + 7); xx += 1) {
       const index = yy * imageData.width + xx;
       sxx += ix[index] * ix[index];
       syy += iy[index] * iy[index];
@@ -356,6 +356,60 @@ function adaptive(gray, width, height, t1, t2) {
     shifted[i] = gray[i] - local[i] + 128;
   }
   return applyTriThreshold(shifted, width, height, t1, t2);
+}
+
+function analyzeMultiOtsu(histogram, total) {
+  const probs = histogram.map((count) => count / total);
+  const omega = new Array(256).fill(0);
+  const mu = new Array(256).fill(0);
+  omega[0] = probs[0];
+  mu[0] = 0;
+
+  for (let i = 1; i < 256; i += 1) {
+    omega[i] = omega[i - 1] + probs[i];
+    mu[i] = mu[i - 1] + i * probs[i];
+  }
+
+  const globalMean = mu[255];
+  let best = { t1: 85, t2: 170, score: -Infinity };
+  const topCandidates = [];
+
+  function pushCandidate(candidate) {
+    topCandidates.push(candidate);
+    topCandidates.sort((a, b) => b.score - a.score);
+    if (topCandidates.length > 4) topCandidates.length = 4;
+  }
+
+  for (let t1 = 1; t1 < 254; t1 += 1) {
+    for (let t2 = t1 + 1; t2 < 255; t2 += 1) {
+      const w0 = omega[t1];
+      const w1 = omega[t2] - omega[t1];
+      const w2 = 1 - omega[t2];
+      if (w0 < 1e-6 || w1 < 1e-6 || w2 < 1e-6) continue;
+
+      const m0 = mu[t1] / w0;
+      const m1 = (mu[t2] - mu[t1]) / w1;
+      const m2 = (mu[255] - mu[t2]) / w2;
+      const score =
+        w0 * (m0 - globalMean) ** 2 +
+        w1 * (m1 - globalMean) ** 2 +
+        w2 * (m2 - globalMean) ** 2;
+
+      const candidate = { t1, t2, score, w0, w1, w2, m0, m1, m2 };
+      if (score > best.score) best = candidate;
+      if (topCandidates.length < 4 || score > topCandidates[topCandidates.length - 1].score) {
+        pushCandidate(candidate);
+      }
+    }
+  }
+
+  const classStats = [
+    { label: "영역 0", range: `0 ~ ${best.t1}`, weight: best.w0, mean: best.m0 },
+    { label: "영역 1", range: `${best.t1 + 1} ~ ${best.t2}`, weight: best.w1, mean: best.m1 },
+    { label: "영역 2", range: `${best.t2 + 1} ~ 255`, weight: best.w2, mean: best.m2 },
+  ];
+
+  return { globalMean, best, topCandidates, classStats };
 }
 
 function surfResponses(imageData) {
@@ -407,6 +461,7 @@ function graph(canvas, seg, progress) {
     ctx.stroke();
   });
 }
+
 function ScaleModule({ imageData, sourceUrl }) {
   const [sigma, setSigma] = useState(1.8);
   const [ratio, setRatio] = useState(0.2);
@@ -745,6 +800,7 @@ function ThresholdModule({ imageData, sourceUrl }) {
   const gray = useMemo(() => getGrayChannel(imageData), [imageData]);
   const histogram = useMemo(() => buildHistogram(gray), [gray]);
   const otsu = useMemo(() => computeMultiOtsu(histogram, gray.length), [histogram, gray.length]);
+  const otsuAnalysis = useMemo(() => analyzeMultiOtsu(histogram, gray.length), [histogram, gray.length]);
   const [t1, setT1] = useState(otsu.t1);
   const [t2, setT2] = useState(otsu.t2);
   const [mode, setMode] = useState('global');
@@ -761,6 +817,15 @@ function ThresholdModule({ imageData, sourceUrl }) {
       ? applyTriThreshold(gray, imageData.width, imageData.height, a, b)
       : adaptive(gray, imageData.width, imageData.height, a, b);
   }, [gray, imageData, t1, t2, mode]);
+  const otsuSegmented = useMemo(() => {
+    return mode === 'global'
+      ? applyTriThreshold(gray, imageData.width, imageData.height, otsu.t1, otsu.t2)
+      : adaptive(gray, imageData.width, imageData.height, otsu.t1, otsu.t2);
+  }, [gray, imageData, mode, otsu.t1, otsu.t2]);
+  const applyOtsuPreset = () => {
+    setT1(otsu.t1);
+    setT2(otsu.t2);
+  };
 
   return (
     <div className="module-shell">
@@ -773,6 +838,20 @@ function ThresholdModule({ imageData, sourceUrl }) {
       </div>
 
       <div className="control-card glass">
+        <div className="compare-row" style={{ marginBottom: 12 }}>
+          <button className="tab-button active" onClick={applyOtsuPreset}>
+            추천 오츠 임계값 적용
+            <span>{`자동 계산값 t1=${otsu.t1}, t2=${otsu.t2}`}</span>
+          </button>
+          <div className="edu-card">
+            <strong>오츠 기준</strong>
+            <p>히스토그램을 가장 잘 나누는 임계값 조합을 자동으로 추천합니다.</p>
+          </div>
+          <div className="edu-card">
+            <strong>현재 슬라이더</strong>
+            <p>{`현재 설정 t1=${t1}, t2=${t2}`}</p>
+          </div>
+        </div>
         <div className="control-grid">
           <div className="control">
             <label>t1</label>
@@ -814,6 +893,59 @@ function ThresholdModule({ imageData, sourceUrl }) {
           <div className="mini-grid">
             <ImageFrame title="원본" src={sourceUrl} meta="input" />
             <ImageFrame title={mode === 'global' ? '전역 임계화' : '적응형 임계화'} src={imageDataToDataUrl(segmented)} meta="삼진 결과" />
+            <ImageFrame title="오츠 자동 분할" src={imageDataToDataUrl(otsuSegmented)} meta={`t1=${otsu.t1}, t2=${otsu.t2}`} />
+          </div>
+        </div>
+
+        <div className="stage-card glass span-12">
+          <h3>추천 오츠 임계값 도출 과정</h3>
+          <div className="edu-grid">
+            <div className="edu-card">
+              <strong>1. 세 구간으로 나누기</strong>
+              <p>후보 t1, t2를 움직이며 히스토그램을 3개 영역으로 가릅니다.</p>
+            </div>
+            <div className="edu-card">
+              <strong>2. 영역별 통계 계산</strong>
+              <p>각 영역의 픽셀 비중과 평균 밝기를 계산합니다.</p>
+            </div>
+            <div className="edu-card">
+              <strong>3. 분리 점수 비교</strong>
+              <p>세 영역 평균이 전체 평균에서 얼마나 멀어지는지 비교합니다.</p>
+            </div>
+            <div className="edu-card">
+              <strong>4. 최적 조합 선택</strong>
+              <p>가장 잘 분리되는 조합이 추천 오츠 임계값이 됩니다.</p>
+            </div>
+          </div>
+          <div className="emphasis-box" style={{ marginTop: 12 }}>
+            {`현재 추천 조합은 t1=${otsuAnalysis.best.t1}, t2=${otsuAnalysis.best.t2} 이고, 클래스 간 분산 점수는 ${formatNumber(otsuAnalysis.best.score, 4)} 입니다.`}
+          </div>
+        </div>
+
+        <div className="stage-card glass span-7">
+          <h3>세 영역 통계</h3>
+          <div className="compare-row">
+            {otsuAnalysis.classStats.map((item) => (
+              <div key={item.label} className="compare-item">
+                <strong>{item.label}</strong>
+                <div className="value-chip">{item.range}</div>
+                <p>{`픽셀 비중 ${formatNumber(item.weight * 100, 1)}%`}</p>
+                <p>{`평균 밝기 ${formatNumber(item.mean, 1)}`}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="stage-card glass span-5">
+          <h3>상위 후보 비교</h3>
+          <div className="edu-grid">
+            {otsuAnalysis.topCandidates.map((candidate, index) => (
+              <div key={`${candidate.t1}-${candidate.t2}`} className="edu-card">
+                <strong>{index === 0 ? "최종 선택" : `후보 ${index + 1}`}</strong>
+                <p>{`t1=${candidate.t1}, t2=${candidate.t2}`}</p>
+                <p>{`점수 ${formatNumber(candidate.score, 4)}`}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>
